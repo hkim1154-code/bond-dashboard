@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>채권 데이터 대시보드</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -107,7 +106,9 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
         const SUPABASE_URL = 'https://muidtqhxoatzptpspsaz.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_sZcwoUn9S2NtW_Ov_IQGLw_PJ_s-YjE';
         
@@ -115,7 +116,7 @@
         let creditData = [];
         let charts = {};
 
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
 
         async function loadData() {
             try {
@@ -123,17 +124,20 @@
                 thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
                 const dateStr = thirtyDaysAgo.toISOString().split('T')[0];
 
-                const { data: treasury } = await supabase
+                const { data: treasury, error: treasuryError } = await supabaseClient
                     .from('treasury_yields')
                     .select('*')
                     .gte('date', dateStr)
                     .order('date', { ascending: true });
 
-                const { data: credit } = await supabase
+                const { data: credit, error: creditError } = await supabaseClient
                     .from('credit_rates')
                     .select('*')
                     .gte('date', dateStr)
                     .order('date', { ascending: true });
+
+                if (treasuryError) throw treasuryError;
+                if (creditError) throw creditError;
 
                 treasuryData = treasury || [];
                 creditData = credit || [];
@@ -141,6 +145,7 @@
                 renderDashboard();
             } catch (err) {
                 document.getElementById('dashboard').innerHTML = `<div class="error">데이터 로드 실패: ${err.message}</div>`;
+                console.error('Error:', err);
             }
         }
 
@@ -162,15 +167,15 @@
             const selectedTreasury = document.getElementById('treasurySelect').value;
             const selectedCredit = document.getElementById('creditSelect').value;
 
-            const treasuryData_ = getTreasuryByMaturity(selectedTreasury);
-            const creditData_ = getCreditByType(selectedCredit);
+            const treasuryDataFiltered = getTreasuryByMaturity(selectedTreasury);
+            const creditDataFiltered = getCreditByType(selectedCredit);
 
-            const latestTreasury = treasuryData_.length ? treasuryData_[treasuryData_.length - 1].value : null;
-            const oldestTreasury = treasuryData_.length ? treasuryData_[0].value : null;
+            const latestTreasury = treasuryDataFiltered.length ? treasuryDataFiltered[treasuryDataFiltered.length - 1].value : null;
+            const oldestTreasury = treasuryDataFiltered.length ? treasuryDataFiltered[0].value : null;
             const treasuryChange = latestTreasury && oldestTreasury ? (latestTreasury - oldestTreasury).toFixed(3) : null;
 
-            const latestCredit = creditData_.length ? creditData_[creditData_.length - 1].value : null;
-            const oldestCredit = creditData_.length ? creditData_[0].value : null;
+            const latestCredit = creditDataFiltered.length ? creditDataFiltered[creditDataFiltered.length - 1].value : null;
+            const oldestCredit = creditDataFiltered.length ? creditDataFiltered[0].value : null;
             const creditChange = latestCredit && oldestCredit ? (latestCredit - oldestCredit).toFixed(3) : null;
 
             let html = `
@@ -197,16 +202,16 @@
             document.getElementById('dashboard').innerHTML = html;
 
             // Draw charts
-            if (treasuryData_.length > 0) {
+            if (treasuryDataFiltered.length > 0) {
                 const ctx = document.getElementById('treasuryChart').getContext('2d');
                 if (charts.treasury) charts.treasury.destroy();
                 charts.treasury = new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: treasuryData_.map(d => d.date),
+                        labels: treasuryDataFiltered.map(d => d.date),
                         datasets: [{
                             label: selectedTreasury,
-                            data: treasuryData_.map(d => d.value),
+                            data: treasuryDataFiltered.map(d => d.value),
                             borderColor: '#2a78d6',
                             backgroundColor: 'rgba(42, 120, 214, 0.1)',
                             borderWidth: 2,
@@ -223,16 +228,16 @@
                 });
             }
 
-            if (creditData_.length > 0) {
+            if (creditDataFiltered.length > 0) {
                 const ctx = document.getElementById('creditChart').getContext('2d');
                 if (charts.credit) charts.credit.destroy();
                 charts.credit = new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: creditData_.map(d => d.date),
+                        labels: creditDataFiltered.map(d => d.date),
                         datasets: [{
                             label: selectedCredit,
-                            data: creditData_.map(d => d.value),
+                            data: creditDataFiltered.map(d => d.value),
                             borderColor: '#1baf7a',
                             backgroundColor: 'rgba(27, 175, 122, 0.1)',
                             borderWidth: 2,
